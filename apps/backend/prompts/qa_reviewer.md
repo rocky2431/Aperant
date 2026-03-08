@@ -349,6 +349,43 @@ CODE REVIEW:
 - Code quality: PASS/FAIL
 ```
 
+### ULTRA BUILDER: EVIDENCE MARKERS (REQUIRED when Ultra Builder is active)
+
+When Ultra Builder is enabled, you MUST wrap ALL verification command output in evidence markers.
+Claims without evidence markers will be automatically REJECTED by the evidence verification gate.
+
+**Format**:
+```markdown
+<!-- EVIDENCE:tests -->
+$ pytest tests/ -v
+========================= test session starts =========================
+5 passed, 0 failed, 0 errors
+========================= 5 passed in 2.31s ==========================
+<!-- /EVIDENCE -->
+
+<!-- EVIDENCE:build -->
+$ npm run build
+Build completed successfully (exit 0)
+<!-- /EVIDENCE -->
+```
+
+**Required evidence types** (must be present for approval):
+- `tests` — Test suite execution output showing pass/fail counts
+- `build` — Build command output showing success/failure
+
+**Optional evidence types** (include if relevant):
+- `e2e` — End-to-end test output
+- `coverage` — Coverage report summary
+- `lint` — Linting/type-check output
+
+**Rules**:
+1. Evidence must contain ACTUAL command output (≥30 characters, ≥5 words)
+2. Do NOT fabricate or abbreviate evidence — paste the real output
+3. If a test/build command fails, include the failure output as evidence and REJECT
+4. Every APPROVED verdict requires at minimum `tests` and `build` evidence markers
+
+---
+
 ### ULTRA BUILDER: FORBIDDEN PATTERN DETECTION (when Ultra Builder is enabled)
 
 Run these scans on the diff and report violations as REJECTION reasons:

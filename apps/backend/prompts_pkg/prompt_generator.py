@@ -13,10 +13,13 @@ This approach:
 """
 
 import json
+import logging
 import re
 from pathlib import Path
 
 from core.ultra_builder import is_ultra_builder_enabled
+
+logger = logging.getLogger(__name__)
 
 # Worktree path patterns for detection
 # Matches paths like: .auto-claude/worktrees/tasks/{spec-name}/
@@ -319,10 +322,34 @@ Verify:""")
         instructions = verification.get("instructions", "Manual verification required")
         sections.append(f"**Manual Verification:**\n{instructions}\n")
 
+    # Ultra Builder: Inject learned patterns from QA history
+    ultra_builder_active = is_ultra_builder_enabled(spec_dir)
+    if ultra_builder_active:
+        try:
+            from memory.learned_patterns import LearnedPatternTracker
+
+            tracker = LearnedPatternTracker(spec_dir)
+            patterns = tracker.get_confirmed_patterns()
+            if patterns:
+                sections.append("## LEARNED PATTERNS (from QA findings)\n")
+                sections.append(
+                    "These patterns were identified from past QA rejections. "
+                    "Follow them to avoid repeating known issues.\n"
+                )
+                for p in patterns[:10]:
+                    badge = "[FACT]" if p.confidence == "fact" else "[INFERENCE]"
+                    sections.append(f"- {badge} {p.pattern}")
+                sections.append("")
+            tracker.close()
+        except Exception:
+            logger.warning(
+                "Failed to load learned patterns for prompt injection",
+                exc_info=True,
+            )
+
     # Ultra Builder: TDD workflow injection
     test_first = subtask.get("test_first", False)
     architecture_layer = subtask.get("architecture_layer", "")
-    ultra_builder_active = is_ultra_builder_enabled(spec_dir)
 
     if ultra_builder_active and test_first:
         sections.append("""## ULTRA BUILDER: TDD WORKFLOW (test_first: true)

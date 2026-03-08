@@ -51,6 +51,7 @@ class UltraReviewReport:
     has_critical: bool = False
     agent_results: dict[str, Any] = field(default_factory=dict)
     error_agents: list[str] = field(default_factory=list)
+    verdict: str = "APPROVE"  # APPROVE | COMMENT | REQUEST_CHANGES
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -78,6 +79,7 @@ class UltraReviewReport:
                 for f in self.high_confidence_findings
             ],
             "has_critical": self.has_critical,
+            "verdict": self.verdict,
             "error_agents": self.error_agents,
         }
 
@@ -176,43 +178,46 @@ def _parse_findings(response: str) -> list[dict[str, Any]]:
 def _deduplicate_findings(
     all_findings: dict[str, list[dict[str, Any]]],
 ) -> UltraReviewReport:
-    """Deduplicate findings across agents and compute confidence scores."""
+    """Deduplicate findings across agents using proximity-based coordinator.
+
+    Uses the Review Coordinator for:
+    - Proximity dedup: (file, line // 4) bucketing instead of exact (file, line)
+    - Severity escalation: 3+ agents on same area → critical
+    - Verdict: REQUEST_CHANGES / COMMENT / APPROVE
+    """
+    from .review_coordinator import coordinate_findings
+
+    coordinated = coordinate_findings(all_findings)
+
+    # Map CoordinatedReport back to UltraReviewReport for interface compatibility
     report = UltraReviewReport()
+    report.verdict = coordinated.verdict
 
-    # Track findings by (file, line) for dedup
-    location_counts: dict[tuple[str, int], list[ReviewFinding]] = {}
+    for f in coordinated.findings:
+        finding = ReviewFinding(
+            reviewer=f.get("reviewer", "unknown"),
+            severity=f.get("severity", "minor"),
+            file=f.get("file", "unknown"),
+            line=f.get("line", 0),
+            title=f.get("title", ""),
+            suggestion=f.get("suggestion", ""),
+            category=f.get("category", ""),
+        )
+        report.findings.append(finding)
+        if finding.severity == "critical":
+            report.has_critical = True
 
-    for agent_name, findings in all_findings.items():
-        report.agent_results[agent_name] = len(findings)
-        for f in findings:
-            finding = ReviewFinding(
-                reviewer=agent_name,
-                severity=f.get("severity", "minor"),
-                file=f.get("file", "unknown"),
-                line=f.get("line", 0),
-                title=f.get("title", ""),
-                suggestion=f.get("suggestion", ""),
-                category=f.get("category", ""),
-            )
-            report.findings.append(finding)
+    for f in coordinated.high_confidence:
+        report.high_confidence_findings.append(ReviewFinding(
+            reviewer=f.get("reviewer", "unknown"),
+            severity=f.get("severity", "minor"),
+            file=f.get("file", "unknown"),
+            line=f.get("line", 0),
+            title=f.get("title", ""),
+            suggestion=f.get("suggestion", ""),
+        ))
 
-            if finding.severity == "critical":
-                report.has_critical = True
-
-            # Track location for cross-agent agreement
-            loc_key = (finding.file, finding.line)
-            if loc_key not in location_counts:
-                location_counts[loc_key] = []
-            location_counts[loc_key].append(finding)
-
-    # High confidence: 2+ agents flagged same location
-    severity_order = {"critical": 0, "major": 1, "minor": 2}
-    for loc_findings in location_counts.values():
-        if len(loc_findings) >= 2:
-            # Use the highest severity finding as representative
-            loc_findings.sort(key=lambda x: severity_order.get(x.severity, 3))
-            report.high_confidence_findings.append(loc_findings[0])
-
+    report.agent_results = coordinated.agent_stats
     return report
 
 

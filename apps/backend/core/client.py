@@ -229,6 +229,7 @@ from core.auth import (
 from linear_updater import is_linear_enabled
 from prompts_pkg.project_context import detect_project_capabilities, load_project_index
 from security import bash_security_hook
+from security.post_edit_guard import post_edit_guard
 
 
 def _validate_custom_mcp_server(server: dict) -> bool:
@@ -944,6 +945,9 @@ def create_client(
         "hooks": {
             "PreToolUse": [
                 HookMatcher(matcher="Bash", hooks=[bash_security_hook]),
+            ],
+            "PostToolUse": [
+                HookMatcher(matcher="Write|Edit|MultiEdit", hooks=[post_edit_guard]),
             ],
         },
         "max_turns": 1000,

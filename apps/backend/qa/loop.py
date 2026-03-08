@@ -291,8 +291,16 @@ async def run_qa_validation_loop(
             ExecutionPhase.QA_REVIEW, f"Running QA review iteration {qa_iteration}"
         )
 
-        # Ultra Builder: Run 6-agent parallel review (first iteration only)
-        if qa_iteration == 1 and is_ultra_builder_enabled(spec_dir):
+        # Ultra Builder: Run 6-agent parallel review
+        # Runs on first iteration and on any iteration following a verdict-gate rejection
+        ultra_recheck_needed = (
+            is_ultra_builder_enabled(spec_dir)
+            and (spec_dir / "QA_FIX_REQUEST.md").exists()
+            and "REVIEW VERDICT GATE" in (spec_dir / "QA_FIX_REQUEST.md").read_text(
+                encoding="utf-8"
+            )
+        ) if is_ultra_builder_enabled(spec_dir) and qa_iteration > 1 else False
+        if (qa_iteration == 1 or ultra_recheck_needed) and is_ultra_builder_enabled(spec_dir):
             try:
                 from .ultra_review import run_ultra_review, write_ultra_review_context
                 ultra_findings = await run_ultra_review(project_dir, spec_dir)
@@ -381,6 +389,69 @@ async def run_qa_validation_loop(
                     )
                     continue  # Skip to next iteration (fixer will run)
 
+            # Ultra Builder: Review verdict gate — block approval if critical findings exist
+            if is_ultra_builder_enabled(spec_dir):
+                import json as _json
+
+                ultra_report_path = spec_dir / "ultra_review_report.json"
+                if ultra_report_path.exists():
+                    try:
+                        report_data = _json.loads(
+                            ultra_report_path.read_text(encoding="utf-8")
+                        )
+                        critical_findings = [
+                            f
+                            for f in report_data.get("findings", [])
+                            if f.get("severity") == "critical"
+                        ]
+                        if critical_findings:
+                            debug_warning(
+                                "qa_loop",
+                                "Ultra Builder verdict gate: approval overridden — critical findings",
+                                critical_count=len(critical_findings),
+                            )
+                            print(
+                                f"\n⚠️  Ultra Builder: {len(critical_findings)} critical "
+                                f"finding(s) from review — cannot approve"
+                            )
+                            # Write fix request with critical findings
+                            fix_lines = [
+                                "## ULTRA BUILDER: REVIEW VERDICT GATE",
+                                "",
+                                "The following critical findings from the 6-agent review "
+                                "must be resolved before approval:",
+                                "",
+                            ]
+                            for cf in critical_findings[:10]:
+                                fix_lines.append(
+                                    f"- **[{cf.get('file', '?')}:{cf.get('line', '?')}]** "
+                                    f"{cf.get('title', 'Unknown issue')}"
+                                )
+                                if cf.get("suggestion"):
+                                    fix_lines.append(f"  Fix: {cf['suggestion']}")
+                            fix_text = "\n".join(fix_lines)
+                            fix_request = spec_dir / "QA_FIX_REQUEST.md"
+                            fix_request.write_text(fix_text, encoding="utf-8")
+                            status = "rejected"
+                            record_iteration(
+                                spec_dir,
+                                qa_iteration,
+                                "rejected",
+                                [
+                                    {
+                                        "title": f"Ultra Review: {len(critical_findings)} critical findings",
+                                        "description": fix_text[:500],
+                                    }
+                                ],
+                                iteration_duration,
+                            )
+                            continue
+                    except (OSError, _json.JSONDecodeError) as exc:
+                        logger.warning(
+                            "Failed to read ultra review report for verdict gate: %s",
+                            exc,
+                        )
+
             # Record successful iteration (only reached if evidence gate passes)
             debug_success(
                 "qa_loop",
@@ -463,6 +534,20 @@ async def run_qa_validation_loop(
             has_recurring, recurring_issues = has_recurring_issues(
                 current_issues, history
             )
+
+            # Ultra Builder: Save QA rejection patterns for coder feedback loop
+            if is_ultra_builder_enabled(spec_dir) and current_issues:
+                try:
+                    from memory.learned_patterns import LearnedPatternTracker
+
+                    tracker = LearnedPatternTracker(spec_dir)
+                    for issue in current_issues[:5]:
+                        title = issue.get("title", "")
+                        if title:
+                            tracker.record_pattern(f"QA: {title}")
+                    tracker.close()
+                except Exception as exc:
+                    logger.warning("Failed to save QA patterns: %s", exc)
 
             # Record rejected iteration AFTER checking for recurring issues
             record_iteration(
