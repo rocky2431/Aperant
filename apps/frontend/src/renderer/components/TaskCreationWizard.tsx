@@ -457,6 +457,7 @@ export function TaskCreationWizard({
       // This preserves gitignored files (.env, configs) by not switching to origin
       if (isSelectedBranchLocal) metadata.useLocalBranch = true;
       metadata.fastMode = fastMode;
+      metadata.ultraBuilderEnabled = settings.ultraBuilderEnabled ?? false;
 
       const task = await createTask(projectId, title.trim(), description.trim(), metadata);
       if (task) {

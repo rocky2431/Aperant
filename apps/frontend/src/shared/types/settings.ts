@@ -170,6 +170,7 @@ export interface PhaseModelConfig {
   planning: ModelTypeShort;   // Implementation planning
   coding: ModelTypeShort;     // Actual coding implementation
   qa: ModelTypeShort;         // QA review and fixing
+  ultra_review?: ModelTypeShort; // Ultra Builder Pro review agents
 }
 
 // Thinking level configuration per phase
@@ -178,6 +179,7 @@ export interface PhaseThinkingConfig {
   planning: ThinkingLevel;
   coding: ThinkingLevel;
   qa: ThinkingLevel;
+  ultra_review?: ThinkingLevel; // Ultra Builder Pro review agents
 }
 
 // Feature-specific model configuration (for non-pipeline features)
@@ -286,6 +288,8 @@ export interface AppSettings {
   customTerminalPath?: string; // For 'custom' terminal
   // YOLO mode: invoke Claude with --dangerously-skip-permissions flag
   dangerouslySkipPermissions?: boolean;
+  // Ultra Builder Pro: enforce TDD, architecture constraints, 6-agent review, and evidence verification
+  ultraBuilderEnabled?: boolean;
   // Anonymous error reporting (Sentry) - enabled by default to help improve the app
   sentryEnabled?: boolean;
   // Auto-name Claude terminals based on initial message (only triggers once per session)

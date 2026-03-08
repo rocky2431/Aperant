@@ -7,6 +7,7 @@ Main enforcement point for the security system.
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -146,6 +147,30 @@ async def bash_security_hook(
                         "permissionDecisionReason": reason,
                     }
                 }
+
+    # Additional dangerous pattern detection
+    command_lower = command.lower()
+    dangerous_patterns = [
+        ("git push --force", r"git\s+push\s+.*(?:--force|--force-with-lease).*\b(main|master|develop)\b|git\s+push\s+.*\b(main|master|develop)\b.*(?:--force|--force-with-lease)"),
+        ("DROP TABLE", r"drop\s+table"),
+        ("DROP DATABASE", r"drop\s+database"),
+        ("TRUNCATE TABLE", r"truncate\s+table"),
+        ("chmod 777", r"chmod\s+777"),
+    ]
+
+    for pattern_name, pattern in dangerous_patterns:
+        if re.search(pattern, command_lower):
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": (
+                        f"BLOCKED: Dangerous operation detected — {pattern_name}\n\n"
+                        f"This command is blocked for safety. If you need to perform "
+                        f"this operation, request human approval first."
+                    ),
+                }
+            }
 
     return {}
 

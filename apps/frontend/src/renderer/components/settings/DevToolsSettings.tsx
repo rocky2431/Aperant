@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Code, Terminal, RefreshCw, Loader2, Check, FolderOpen, AlertTriangle } from 'lucide-react';
+import { Code, Terminal, RefreshCw, Loader2, Check, FolderOpen, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -419,6 +419,31 @@ export function DevToolsSettings({ settings, onSettingsChange }: DevToolsSetting
               {t('devtools.yoloMode.warning', 'This mode bypasses Claude\'s permission system. Only enable if you fully trust the code being executed.')}
             </p>
           )}
+        </div>
+
+        {/* Ultra Builder Pro Toggle */}
+        <div className="space-y-3 rounded-md border border-blue-500/30 bg-blue-500/5 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-blue-500" />
+              <Label htmlFor="ultra-builder" className="text-blue-200">
+                {t('devtools.ultraBuilder.title')}
+              </Label>
+            </div>
+            <Switch
+              id="ultra-builder"
+              checked={settings.ultraBuilderEnabled ?? false}
+              onCheckedChange={(checked) => {
+                onSettingsChange({
+                  ...settings,
+                  ultraBuilderEnabled: checked
+                });
+              }}
+            />
+          </div>
+          <p className="text-xs text-blue-400/80">
+            {t('devtools.ultraBuilder.description')}
+          </p>
         </div>
 
         {/* Detection Summary */}

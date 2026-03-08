@@ -96,6 +96,92 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
+async def _apply_risk_brake(spec_dir: Path, subtask_id: str, subtask: dict) -> None:
+    """Pause for critical subtasks; log warnings for high-risk ones."""
+    risk = _classify_subtask_risk(subtask)
+    if risk == "critical":
+        logger.warning(
+            "Ultra Builder risk brake: CRITICAL subtask %s — %s",
+            subtask_id, subtask.get("description", "")[:80],
+        )
+        print(f"\n🛑  RISK BRAKE: CRITICAL risk subtask — pausing for human review")
+        print(f"   Subtask: {subtask_id} — {subtask.get('description', '')[:80]}")
+        print(f"   Create '{RESUME_FILE}' in spec dir to continue.")
+        pause_marker = spec_dir / HUMAN_INTERVENTION_FILE
+        pause_marker.write_text(
+            f"RISK BRAKE: Critical subtask {subtask_id}\n"
+            f"Description: {subtask.get('description', '')[:200]}\n"
+            f"Risk: {risk}\n\n"
+            f"Review the subtask and create RESUME file to continue.",
+            encoding="utf-8",
+        )
+        resume_file = spec_dir / RESUME_FILE
+        while pause_marker.exists() and not resume_file.exists():
+            await asyncio.sleep(5)
+        pause_marker.unlink(missing_ok=True)
+        resume_file.unlink(missing_ok=True)
+        print("   ✅ Resuming after human review.")
+    elif risk == "high":
+        logger.warning(
+            "Ultra Builder risk brake: HIGH risk subtask %s — %s",
+            subtask_id, subtask.get("description", "")[:80],
+        )
+        print(f"\n⚠️  RISK: High-risk subtask detected")
+        print(f"   Subtask: {subtask_id} — {subtask.get('description', '')[:80]}")
+        print("   Continuing with caution (logged for review)")
+
+
+def _classify_subtask_risk(subtask: dict) -> str:
+    """Classify a subtask's risk level based on file paths and description.
+
+    Returns: "low", "medium", "high", or "critical"
+    """
+    files = (
+        subtask.get("files_to_modify", [])
+        + subtask.get("files_to_create", [])
+    )
+    description = subtask.get("description", "").lower()
+
+    # Use path segment matching to avoid false positives
+    # (e.g., "auth" shouldn't match "author", "token" shouldn't match "tokenizer")
+    import re as _re
+
+    critical_res = [
+        _re.compile(r'\bpayment\b'), _re.compile(r'\bbilling\b'),
+        _re.compile(r'\bauth\b'), _re.compile(r'\blogin\b'),
+        _re.compile(r'\btoken\b'), _re.compile(r'\bsecret\b'),
+        _re.compile(r'\bcredential\b'), _re.compile(r'(^|/)\.env(\b|$)'),
+    ]
+    high_res = [
+        _re.compile(r'\bmigration\b'), _re.compile(r'\bpermission\b'),
+        _re.compile(r'\brole\b'), _re.compile(r'\bschema\b'),
+        _re.compile(r'\bdatabase\b'), _re.compile(r'\bdeploy\b'),
+    ]
+    medium_res = [
+        _re.compile(r'\bdelete\b'), _re.compile(r'\bdrop\b'),
+        _re.compile(r'\bremove\b'), _re.compile(r'\bbreaking\b'),
+        _re.compile(r'\brefactor\b'),
+    ]
+
+    # Check file paths
+    for f in files:
+        f_lower = f.lower()
+        if any(p.search(f_lower) for p in critical_res):
+            return "critical"
+        if any(p.search(f_lower) for p in high_res):
+            return "high"
+
+    # Check description
+    if any(p.search(description) for p in critical_res):
+        return "critical"
+    if any(p.search(description) for p in high_res):
+        return "high"
+    if any(p.search(description) for p in medium_res):
+        return "medium"
+
+    return "low"
+
+
 # =============================================================================
 # FILE VALIDATION UTILITIES
 # =============================================================================
@@ -772,6 +858,7 @@ async def run_autonomous_agent(
     # Set environment variable for security hooks to find the correct project directory
     # This is needed because os.getcwd() may return the wrong directory in worktree mode
     os.environ[PROJECT_DIR_ENV_VAR] = str(project_dir.resolve())
+    os.environ["SPEC_DIR"] = str(spec_dir.resolve())
 
     # Initialize recovery manager (handles memory persistence)
     recovery_manager = RecoveryManager(spec_dir, project_dir)
@@ -1130,6 +1217,11 @@ async def run_autonomous_agent(
                 # Small delay before retry
                 await asyncio.sleep(AUTO_CONTINUE_DELAY_SECONDS)
                 continue  # Skip to next iteration
+
+            # Ultra Builder: Risk brake for high-risk subtasks
+            from core.ultra_builder import is_ultra_builder_enabled
+            if is_ultra_builder_enabled(spec_dir):
+                await _apply_risk_brake(spec_dir, subtask_id, next_subtask)
 
             # Create client for coding phase (after file validation passes)
             client = create_client(

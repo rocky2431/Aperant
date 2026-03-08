@@ -6,9 +6,12 @@ Main QA loop that coordinates reviewer and fixer sessions until
 approval or max iterations.
 """
 
+import logging
 import os
 import time as time_module
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from core.client import create_client
 from core.task_event import TaskEventEmitter
@@ -52,6 +55,8 @@ from .report import (
 )
 from .reviewer import run_qa_agent_session
 
+from core.ultra_builder import is_ultra_builder_enabled
+
 # Configuration
 MAX_QA_ITERATIONS = 50
 MAX_CONSECUTIVE_ERRORS = 3  # Stop after 3 consecutive errors without progress
@@ -94,6 +99,7 @@ async def run_qa_validation_loop(
     # Set environment variable for security hooks to find the correct project directory
     # This is needed because os.getcwd() may return the wrong directory in worktree mode
     os.environ[PROJECT_DIR_ENV_VAR] = str(project_dir.resolve())
+    os.environ["SPEC_DIR"] = str(spec_dir.resolve())
     task_event_emitter = TaskEventEmitter.from_spec_dir(spec_dir)
 
     debug_section("qa_loop", "QA Validation Loop")
@@ -285,6 +291,23 @@ async def run_qa_validation_loop(
             ExecutionPhase.QA_REVIEW, f"Running QA review iteration {qa_iteration}"
         )
 
+        # Ultra Builder: Run 6-agent parallel review (first iteration only)
+        if qa_iteration == 1 and is_ultra_builder_enabled(spec_dir):
+            try:
+                from .ultra_review import run_ultra_review, write_ultra_review_context
+                ultra_findings = await run_ultra_review(project_dir, spec_dir)
+                if ultra_findings.findings:
+                    write_ultra_review_context(spec_dir, ultra_findings)
+                    debug(
+                        "qa_loop",
+                        "Ultra Review complete",
+                        findings=len(ultra_findings.findings),
+                        critical=ultra_findings.has_critical,
+                    )
+            except Exception as exc:
+                logger.warning("Ultra Review failed (non-blocking): %s", exc)
+                debug_warning("qa_loop", f"Ultra Review failed (non-blocking): {exc}")
+
         # Run QA reviewer with phase-specific model and thinking budget
         qa_model = get_phase_model(spec_dir, "qa", model)
         qa_betas = get_phase_model_betas(spec_dir, "qa", model)
@@ -332,7 +355,33 @@ async def run_qa_validation_loop(
             consecutive_errors = 0
             last_error_context = None
 
-            # Record successful iteration
+            # Ultra Builder: Evidence verification gate (check BEFORE recording)
+            if is_ultra_builder_enabled(spec_dir):
+                from .evidence import extract_evidence, format_missing_evidence_feedback
+                evidence = extract_evidence(spec_dir / "qa_report.md")
+                if not evidence.all_verified:
+                    debug_warning(
+                        "qa_loop",
+                        "Ultra Builder evidence gate: approval overridden — missing evidence",
+                        missing=[c.claim for c in evidence.missing_claims],
+                    )
+                    print("\n⚠️  Ultra Builder: Evidence verification failed")
+                    for claim in evidence.missing_claims:
+                        print(f"   Missing: {claim.claim}")
+                    # Write feedback for the fixer
+                    feedback = format_missing_evidence_feedback(evidence)
+                    fix_request = spec_dir / "QA_FIX_REQUEST.md"
+                    fix_request.write_text(feedback, encoding="utf-8")
+                    # Record as rejected (single record, no contradiction)
+                    status = "rejected"
+                    record_iteration(
+                        spec_dir, qa_iteration, "rejected",
+                        [{"title": "Missing evidence", "description": feedback[:500]}],
+                        iteration_duration,
+                    )
+                    continue  # Skip to next iteration (fixer will run)
+
+            # Record successful iteration (only reached if evidence gate passes)
             debug_success(
                 "qa_loop",
                 "QA APPROVED",
@@ -340,6 +389,7 @@ async def run_qa_validation_loop(
                 duration=f"{iteration_duration:.1f}s",
             )
             record_iteration(spec_dir, qa_iteration, "approved", [], iteration_duration)
+
             qa_status = get_qa_signoff_status(spec_dir) or {}
             task_event_emitter.emit(
                 "QA_PASSED",

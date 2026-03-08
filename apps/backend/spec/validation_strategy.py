@@ -265,6 +265,11 @@ class ValidationStrategyBuilder:
         builder_func = strategy_builders.get(project_type, self._strategy_default)
         strategy = builder_func(project_dir, risk_level)
 
+        # Ultra Builder Pro validation steps
+        from core.ultra_builder import is_ultra_builder_enabled
+        if is_ultra_builder_enabled(spec_dir):
+            strategy = self._add_ultra_builder_steps(strategy, project_dir, spec_dir)
+
         # Add security scanning for high+ risk
         if risk_level in ["high", "critical"]:
             strategy = self._add_security_steps(strategy, project_type)
@@ -869,6 +874,64 @@ class ValidationStrategyBuilder:
             test_types_required=[],
             reasoning="Unknown project type - manual verification required.",
         )
+
+    def _add_ultra_builder_steps(
+        self, strategy: ValidationStrategy, project_dir: Path, spec_dir: Path
+    ) -> ValidationStrategy:
+        """Add Ultra Builder Pro validation steps to the strategy."""
+        ultra_steps = []
+
+        # Coverage enforcement
+        if strategy.project_type in ["python", "python_api", "python_cli"]:
+            ultra_steps.append(
+                ValidationStep(
+                    name="Coverage Threshold (Ultra Builder)",
+                    command="pytest --cov --cov-fail-under=80",
+                    expected_outcome="Coverage >= 80%",
+                    step_type="test",
+                    required=True,
+                    blocking=True,
+                )
+            )
+        elif strategy.project_type in ["nodejs", "react_spa", "vue_spa", "nextjs", "electron"]:
+            ultra_steps.append(
+                ValidationStep(
+                    name="Coverage Threshold (Ultra Builder)",
+                    command="npx vitest run --coverage --coverage.thresholds.lines=80",
+                    expected_outcome="Coverage >= 80%",
+                    step_type="test",
+                    required=True,
+                    blocking=True,
+                )
+            )
+
+        # Forbidden pattern scan
+        ultra_steps.append(
+            ValidationStep(
+                name="Forbidden Pattern Scan (Ultra Builder)",
+                command='git diff HEAD~5...HEAD | grep -c "TODO\\|FIXME\\|HACK\\|XXX" || true',
+                expected_outcome="0 occurrences of TODO/FIXME/HACK/XXX",
+                step_type="test",
+                required=True,
+                blocking=True,
+            )
+        )
+
+        # Console.log scan (for JS/TS projects)
+        if strategy.project_type in ["nodejs", "react_spa", "vue_spa", "nextjs", "electron"]:
+            ultra_steps.append(
+                ValidationStep(
+                    name="Console.log Scan (Ultra Builder)",
+                    command='git diff HEAD~5...HEAD -- "*.ts" "*.tsx" "*.js" ":!*test*" ":!*spec*" | grep -c "console\\." || true',
+                    expected_outcome="0 console.log statements in production code",
+                    step_type="test",
+                    required=True,
+                    blocking=False,
+                )
+            )
+
+        strategy.steps.extend(ultra_steps)
+        return strategy
 
     def _add_security_steps(
         self, strategy: ValidationStrategy, project_type: str

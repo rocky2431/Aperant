@@ -412,6 +412,53 @@ Use ONLY these values for the `type` field in phases:
 }
 ```
 
+### Optional Subtask Fields
+
+In addition to the standard fields, subtasks support the following optional fields:
+
+- `test_first: bool` (optional) — When Ultra Builder is enabled, planner should set this to `true` for implementation subtasks that need tests written first (RED-GREEN-REFACTOR TDD flow).
+- `architecture_layer: "core" | "shell" | "integration"` (optional) — Labels the subtask's architecture layer for test strategy classification.
+
+### ULTRA BUILDER PRO EXTENSIONS (when ultraBuilderEnabled is active)
+
+When operating under Ultra Builder Pro mode, you MUST enhance your plan:
+
+#### Test-First Subtask Pairs
+For every implementation subtask, generate a **preceding test subtask**:
+- Test subtask: `test_first: true`, describes the tests to write
+- Implementation subtask: references the test subtask as a dependency
+
+Example:
+```json
+{
+  "id": "1.1",
+  "description": "Write unit tests for UserService.createUser()",
+  "test_first": true,
+  "architecture_layer": "core"
+},
+{
+  "id": "1.2",
+  "description": "Implement UserService.createUser()",
+  "architecture_layer": "core",
+  "depends_on": ["1.1"]
+}
+```
+
+#### Architecture Layer Classification
+Label every subtask with its architecture layer:
+- `"core"` — Pure domain logic (entities, value objects, domain services). Unit tests only, NO mocks.
+- `"shell"` — IO/infrastructure (HTTP handlers, repositories, external clients). Integration tests with Testcontainers.
+- `"integration"` — Cross-boundary wiring. Contract/E2E tests.
+
+#### Vertical Slice Principle
+Each feature MUST trace: Entry Point → Use Case → Domain → Persistence
+- Do NOT plan horizontal-only tasks (e.g., "create all models first, then all handlers")
+- Plan vertical slices: "implement user creation end-to-end", then "implement user deletion end-to-end"
+
+#### Functional Core / Imperative Shell
+- **Functional Core** (pure): Domain Entities, Value Objects, Domain Services → unit tests, no mocks
+- **Imperative Shell** (IO): HTTP handlers, Repos, External clients → integration tests, Testcontainers
+
 ---
 
 ## PHASE 3.5: DEFINE VERIFICATION STRATEGY

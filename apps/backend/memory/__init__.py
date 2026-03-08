@@ -85,6 +85,10 @@ from .sessions import load_all_insights, save_session_insights
 # Summary utilities
 from .summary import get_memory_summary
 
+# Ultra Builder Pro — FTS5 memory and learned patterns
+from .fts_memory import FTSMemory, MemoryEntry
+from .learned_patterns import LearnedPatternTracker, PatternRecord
+
 __all__ = [
     # Graphiti helpers
     "is_graphiti_memory_enabled",
@@ -105,4 +109,9 @@ __all__ = [
     "load_gotchas",
     # Summary
     "get_memory_summary",
+    # Ultra Builder Pro — FTS5 memory and learned patterns
+    "FTSMemory",
+    "MemoryEntry",
+    "LearnedPatternTracker",
+    "PatternRecord",
 ]

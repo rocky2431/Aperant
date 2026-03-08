@@ -1,98 +1,94 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Auto Claude is an autonomous multi-agent coding framework that plans, builds, and validates software for you. It's a monorepo with a Python backend (CLI + agent logic) and an Electron/React frontend (desktop UI).
-
-> **Deep-dive reference:** [ARCHITECTURE.md](shared_docs/ARCHITECTURE.md) | **Frontend contributing:** [apps/frontend/CONTRIBUTING.md](apps/frontend/CONTRIBUTING.md)
+Aperant (formerly Auto Claude) is an autonomous multi-agent coding framework that plans, builds, and validates software. It's a monorepo with a Python backend (CLI + agent logic) and an Electron/React frontend (desktop UI).
 
 ## Product Overview
 
-Auto Claude is a desktop application (+ CLI) where users describe a goal and AI agents autonomously handle planning, implementation, and QA validation. All work happens in isolated git worktrees so the main branch stays safe.
+Aperant is a desktop application (+ CLI) where users describe a goal and AI agents autonomously handle planning, implementation, and QA validation. All work happens in isolated git worktrees so the main branch stays safe.
 
 **Core workflow:** User creates a task → Spec creation pipeline assesses complexity and writes a specification → Planner agent breaks it into subtasks → Coder agent implements (can spawn parallel subagents) → QA reviewer validates → QA fixer resolves issues → User reviews and merges.
 
-**Main features:**
-
-- **Autonomous Tasks** — Multi-agent pipeline (planner, coder, QA) that builds features end-to-end
-- **Kanban Board** — Visual task management from planning through completion
-- **Agent Terminals** — Up to 12 parallel AI-powered terminals with task context injection
-- **Insights** — AI chat interface for exploring and understanding your codebase
-- **Roadmap** — AI-assisted feature planning with strategic roadmap generation
-- **Ideation** — Discover improvements, performance issues, and security vulnerabilities
-- **GitHub/GitLab Integration** — Import issues, AI-powered investigation, PR/MR review and creation
-- **Changelog** — Generate release notes from completed tasks
-- **Memory System** — Graphiti-based knowledge graph retains insights across sessions
-- **Isolated Workspaces** — Git worktree isolation for every build; AI-powered semantic merge
-- **Flexible Authentication** — Use a Claude Code subscription (OAuth) or API profiles with any Anthropic-compatible endpoint (e.g., Anthropic API, z.ai for GLM models)
-- **Multi-Account Swapping** — Register multiple Claude accounts; when one hits a rate limit, Auto Claude automatically switches to an available account
-- **Cross-Platform** — Native desktop app for Windows, macOS, and Linux with auto-updates
-
 ## Critical Rules
 
-**Claude Agent SDK only** — All AI interactions use `claude-agent-sdk` because it handles security hooks, tool permissions, and MCP server integration. Use `create_client()` from `core.client`, not `anthropic.Anthropic()` directly.
+**Claude Agent SDK only** — All AI interactions use `claude-agent-sdk`. Use `create_client()` from `core.client`, not `anthropic.Anthropic()` directly. It handles security hooks, tool permissions, and MCP server integration.
 
-**i18n required** — All frontend user-facing text uses `react-i18next` translation keys. Hardcoded strings in JSX/TSX break localization for non-English users. Add keys to both `en/*.json` and `fr/*.json`.
+**i18n required** — All frontend user-facing text uses `react-i18next` translation keys. Add keys to both `en/*.json` and `fr/*.json`. Hardcoded strings in JSX/TSX break localization.
 
-**Platform abstraction** — Use the platform modules in `apps/frontend/src/main/platform/` or `apps/backend/core/platform/` instead of `process.platform` directly. CI tests all three platforms, and raw platform checks cause failures.
+**Platform abstraction** — Use the platform modules in `apps/frontend/src/main/platform/` or `apps/backend/core/platform/` instead of `process.platform` directly. CI tests all three platforms.
 
-**No time estimates** — Provide priority-based ordering instead of duration predictions.
+**Python file encoding** — Always specify `encoding="utf-8"` for text file operations. Windows Python defaults to `cp1252`, causing errors with emoji and international characters.
 
 **PR target** — Always target the `develop` branch for PRs, not `main`. Main is reserved for releases.
 
-**No console.log in production code** — `console.log` output is invisible in bundled Electron apps. Use Sentry for error tracking in production; reserve `console.log` for development only.
+**No console.log in production** — Invisible in bundled Electron apps. Use Sentry for error tracking.
 
-## Work Approach: Orchestrator-First
+**No time estimates** — Provide priority-based ordering instead of duration predictions.
 
-You are an orchestrator. Your primary role is to understand what needs to be done, break it into workstreams, and delegate execution to agent teams. This keeps your context window focused on coordination and decision-making rather than filling up with implementation details.
+## Prerequisites
 
-<orchestrator_pattern>
-When given a task, follow this pattern:
+- **Python 3.12+** — Backend framework
+- **Node.js 24+** / **npm 10+** — Electron frontend
+- **CMake** — Required for building native dependencies (e.g., LadybugDB)
+- **uv** (recommended) or **pip** — Python package manager
 
-1. **Investigate first** — Read the actual code before forming any hypothesis. Use targeted searches (Glob, Grep, Read) for simple lookups. For broader exploration, spawn an Explore agent.
+## Commands Quick Reference
 
-2. **Plan the approach** — Identify what needs to change, which files are involved, and whether work can be parallelized. For multi-step tasks, create a task list to track workstreams.
+### Setup
+```bash
+npm run install:all              # Install all dependencies (Python + Electron)
+# Or separately:
+cd apps/backend && uv venv && uv pip install -r requirements.txt
+cd apps/frontend && npm install
+```
 
-3. **Delegate execution** — Spawn agent teams to do the implementation work. Each agent gets a clear, self-contained assignment with all the context it needs: relevant file paths, the specific change to make, and acceptance criteria. Run independent workstreams in parallel.
+### Running
+```bash
+npm run dev          # Development mode with HMR
+npm run dev:debug    # Debug mode with verbose output
+npm run dev:mcp      # Electron MCP server for AI debugging
+npm start            # Production build + run
 
-4. **Verify and integrate** — Review agent outputs, run tests, and ensure changes work together. Fix integration issues or spawn follow-up agents as needed.
-</orchestrator_pattern>
+# CLI only
+cd apps/backend && python run.py --spec 001
+```
 
-**When to delegate vs. do directly:**
-- Delegate: multi-file changes, research across the codebase, independent parallel workstreams, tasks that would consume significant context
-- Do directly: single-file edits, simple bug fixes, quick lookups, tasks where you already have the context
+### Testing
 
-**Giving agents good assignments** — Each agent works with a fresh context. Include: the specific goal, relevant file paths, code patterns to follow, and what "done" looks like. Agents perform better with explicit, complete instructions than with vague references to "the current task."
+| Stack | Run all | Run single test |
+|-------|---------|-----------------|
+| Backend | `cd apps/backend && .venv/bin/pytest tests/ -v` | `.venv/bin/pytest tests/test_foo.py::test_bar -v` |
+| Frontend unit | `cd apps/frontend && npm test` | `cd apps/frontend && npx vitest run src/path/to/test.ts` |
+| Frontend E2E | `cd apps/frontend && npm run test:e2e` | `cd apps/frontend && npx playwright test e2e/test-name.spec.ts` |
+| Backend (root) | `npm run test:backend` | — |
 
-**Minimal changes only** — Prefer the simplest approach (e.g., prompt-only changes, single guard clause) before suggesting multi-component solutions. If the user asks for X, implement X — don't bundle additional fixes they didn't request.
+**Backend pytest markers:** `@pytest.mark.slow` (skipped in CI by default), `@pytest.mark.integration` (external services), `@pytest.mark.smoke` (quick verification). Run slow tests: `pytest -m slow`.
 
-**Default to action** — When the user's intent implies making changes, implement them rather than only suggesting. If something is unclear, read the relevant code to fill in the gaps rather than asking. Only ask when genuine ambiguity remains about what the user wants.
+**Backend testpaths:** `integrations/graphiti/tests`, `core/workspace/tests`. Uses `asyncio_mode = "strict"`.
 
-## Context Management
+### Code Quality
+```bash
+# Frontend
+cd apps/frontend
+npm run lint           # Biome check
+npm run lint:fix       # Biome auto-fix
+npm run typecheck      # TypeScript strict mode
 
-Your context window will be automatically compacted as it approaches its limit, allowing you to continue working indefinitely. Do not stop tasks early due to context concerns — instead, persist progress and keep going.
+# Backend
+cd apps/backend && ruff check .
+```
 
-**For long-running tasks:** Use git commits, task lists, and structured notes to track state. When context compacts, review git log and any progress files to re-orient. Focus on incremental progress — complete one component before moving to the next, and commit working states along the way.
-
-**Parallel tool calls** — When reading multiple files, running independent searches, or executing unrelated commands, make all calls in parallel rather than sequentially. This significantly speeds up investigation and implementation.
-
-## Known Gotchas
-
-**Electron path resolution** — For bug fixes in the Electron app, check path resolution differences between dev and production builds (`app.isPackaged`, `process.resourcesPath`). Paths that work in dev often break when Electron is bundled for production — verify both contexts.
-
-### Resetting PR Review State
-
-To fully clear all PR review data so reviews run fresh, delete/reset these three things in `.auto-claude/github/`:
-
-1. `rm .auto-claude/github/pr/logs_*.json` — review log files
-2. `rm .auto-claude/github/pr/review_*.json` — review result files
-3. Reset `pr/index.json` to `{"reviews": [], "last_updated": null}`
-4. Reset `bot_detection_state.json` to `{"reviewed_commits": {}}` — this is the gatekeeper; without clearing it, the bot detector skips already-seen commits
+### Releases
+```bash
+node scripts/bump-version.js patch|minor|major  # Bump version
+git push && gh pr create --base main             # PR to main triggers release
+```
 
 ## Project Structure
 
 ```
-autonomous-coding/
+Aperant/
 ├── apps/
 │   ├── backend/                 # Python backend/CLI — ALL agent logic
 │   │   ├── core/                # client.py, auth.py, worktree.py, platform/
@@ -105,98 +101,36 @@ autonomous-coding/
 │   │   ├── runners/             # Standalone runners (spec, roadmap, insights, github)
 │   │   ├── services/            # Background services, recovery orchestration
 │   │   ├── integrations/        # graphiti/, linear, github
-│   │   ├── project/             # Project analysis, security profiles
 │   │   ├── merge/               # Intent-aware semantic merge for parallel agents
 │   │   └── prompts/             # Agent system prompts (.md)
 │   └── frontend/                # Electron desktop UI
 │       └── src/
-│           ├── main/            # Electron main process
-│           │   ├── agent/       # Agent queue, process, state, events
-│           │   ├── claude-profile/ # Multi-profile credentials, token refresh, usage
-│           │   ├── terminal/    # PTY daemon, lifecycle, Claude integration
-│           │   ├── platform/    # Cross-platform abstraction
-│           │   ├── ipc-handlers/# 40+ handler modules by domain
-│           │   ├── services/    # SDK session recovery, profile service
-│           │   └── changelog/   # Changelog generation and formatting
+│           ├── main/            # Electron main process (agent/, terminal/, claude-profile/, ipc-handlers/, platform/)
 │           ├── preload/         # Electron preload scripts (electronAPI bridge)
-│           ├── renderer/        # React UI
-│           │   ├── components/  # UI components (onboarding, settings, task, terminal, github, etc.)
-│           │   ├── stores/      # 24+ Zustand state stores
-│           │   ├── contexts/    # React contexts (ViewStateContext)
-│           │   ├── hooks/       # Custom hooks (useIpc, useTerminal, etc.)
-│           │   ├── styles/      # CSS / Tailwind styles
-│           │   └── App.tsx      # Root component
+│           ├── renderer/        # React UI (components/, stores/, hooks/, contexts/)
 │           ├── shared/          # Shared types, i18n, constants, utils
-│           │   ├── i18n/locales/# en/*.json, fr/*.json
-│           │   ├── constants/   # themes.ts, etc.
-│           │   ├── types/       # 19+ type definition files
-│           │   └── utils/       # ANSI sanitizer, shell escape, provider detection
 │           └── types/           # TypeScript type definitions
-├── guides/                      # Documentation
 ├── tests/                       # Backend test suite
 └── scripts/                     # Build and utility scripts
 ```
 
-## Commands Quick Reference
+## Architecture
 
-### Setup
-```bash
-npm run install:all              # Install all dependencies from root
-# Or separately:
-cd apps/backend && uv venv && uv pip install -r requirements.txt
-cd apps/frontend && npm install
-```
+### Backend
 
-### Testing
+**Client:** `apps/backend/core/client.py` — `create_client()` returns a configured `ClaudeSDKClient`. Model and thinking level are user-configurable; use `phase_config.py` helpers to resolve values.
 
-| Stack | Command | Tool |
-|-------|---------|------|
-| Backend | `apps/backend/.venv/bin/pytest tests/ -v` | pytest |
-| Frontend unit | `cd apps/frontend && npm test` | Vitest |
-| Frontend E2E | `cd apps/frontend && npm run test:e2e` | Playwright |
-| All backend | `npm run test:backend` (from root) | pytest |
+**Agent prompts** in `apps/backend/prompts/`: `planner.md`, `coder.md`/`coder_recovery.md`, `qa_reviewer.md`/`qa_fixer.md`, `spec_gatherer/researcher/writer/critic.md`, `complexity_assessor.md`.
 
-### Releases
-```bash
-node scripts/bump-version.js patch|minor|major  # Bump version
-git push && gh pr create --base main             # PR to main triggers release
-```
+**Spec directory:** Each spec in `.auto-claude/specs/XXX-name/` contains: `spec.md`, `requirements.json`, `context.json`, `implementation_plan.json`, `qa_report.md`, `QA_FIX_REQUEST.md`.
 
-See [RELEASE.md](RELEASE.md) for full release process.
+**Memory system:** Graph-based semantic memory (Graphiti) in `integrations/graphiti/`. Enable via Electron UI settings or `GRAPHITI_ENABLED=true` in `.env`.
 
-## Backend Development
+### Frontend
 
-### Claude Agent SDK Usage
+**Tech stack:** React 19, TypeScript (strict), Electron 39, Zustand 5, Tailwind CSS v4, Radix UI, xterm.js 6, Vite 7, Vitest 4, Biome 2, Motion (Framer Motion)
 
-Client: `apps/backend/core/client.py` — `create_client()` returns a configured `ClaudeSDKClient` with security hooks, tool permissions, and MCP server integration.
-
-Model and thinking level are user-configurable (via the Electron UI settings or CLI override). Use `phase_config.py` helpers to resolve the correct values
-
-### Agent Prompts (`apps/backend/prompts/`)
-
-| Prompt | Purpose |
-|--------|---------|
-| planner.md | Implementation plan with subtasks |
-| coder.md / coder_recovery.md | Subtask implementation / recovery |
-| qa_reviewer.md / qa_fixer.md | Acceptance validation / issue fixes |
-| spec_gatherer/researcher/writer/critic.md | Spec creation pipeline |
-| complexity_assessor.md | AI-based complexity assessment |
-
-### Spec Directory Structure
-
-Each spec in `.auto-claude/specs/XXX-name/` contains: `spec.md`, `requirements.json`, `context.json`, `implementation_plan.json`, `qa_report.md`, `QA_FIX_REQUEST.md`
-
-### Memory System (Graphiti)
-
-Graph-based semantic memory in `integrations/graphiti/`. Configured through the Electron app's onboarding/settings UI (CLI users can alternatively set `GRAPHITI_ENABLED=true` in `.env`). See [ARCHITECTURE.md](shared_docs/ARCHITECTURE.md#memory-system) for details.
-
-## Frontend Development
-
-### Tech Stack
-
-React 19, TypeScript (strict), Electron 39, Zustand 5, Tailwind CSS v4, Radix UI, xterm.js 6, Vite 7, Vitest 4, Biome 2, Motion (Framer Motion)
-
-### Path Aliases (tsconfig.json)
+**Path aliases** (tsconfig.json):
 
 | Alias | Maps to |
 |-------|---------|
@@ -208,73 +142,30 @@ React 19, TypeScript (strict), Electron 39, Zustand 5, Tailwind CSS v4, Radix UI
 | `@hooks/*` | `src/renderer/shared/hooks/*` |
 | `@lib/*` | `src/renderer/shared/lib/*` |
 
-### State Management (Zustand)
+**Feature module structure** — features follow this layout:
+```
+features/[feature-name]/
+├── components/        # Feature-specific React components
+├── hooks/             # Feature-specific hooks
+├── store/             # Zustand store
+└── index.ts           # Public API exports
+```
 
-All state lives in `src/renderer/stores/`. Key stores:
+**State management:** All renderer state in `src/renderer/stores/` (Zustand). Key stores: `project-store.ts`, `task-store.ts`, `terminal-store.ts`, `settings-store.ts`, `github/issues-store.ts`, `github/pr-review-store.ts`. Main process also has stores: `src/main/project-store.ts`, `src/main/terminal-session-store.ts`.
 
-- `project-store.ts` — Active project, project list
-- `task-store.ts` — Tasks/specs management
-- `terminal-store.ts` — Terminal sessions and state
-- `settings-store.ts` — User preferences
-- `github/issues-store.ts`, `github/pr-review-store.ts` — GitHub integration
-- `insights-store.ts`, `roadmap-store.ts`, `kanban-settings-store.ts`
+**IPC pattern:** Renderer calls via `window.electronAPI.*`, main handles in `src/main/ipc-handlers/` (organized by domain). Preload scripts in `src/preload/` expose safe APIs.
 
-Main process also has stores: `src/main/project-store.ts`, `src/main/terminal-session-store.ts`
+**Styling:** Tailwind CSS v4, 7+ color themes in `src/shared/constants/themes.ts` (light/dark via CSS custom properties), `cn()` helper (`clsx` + `tailwind-merge`), CVA for component variants.
 
-### Styling
+### Frontend Conventions
 
-- **Tailwind CSS v4** with `@tailwindcss/postcss` plugin
-- **7 color themes** (Default, Dusk, Lime, Ocean, Retro, Neo + more) defined in `src/shared/constants/themes.ts`
-- Each theme has light/dark mode variants via CSS custom properties
-- Utility: `clsx` + `tailwind-merge` via `cn()` helper
-- Component variants: `class-variance-authority` (CVA)
-
-### IPC Communication
-
-Main ↔ Renderer communication via Electron IPC:
-- **Handlers:** `src/main/ipc-handlers/` — organized by domain (github, gitlab, ideation, context, etc.)
-- **Preload:** `src/preload/` — exposes safe APIs to renderer
-- Pattern: renderer calls via `window.electronAPI.*`, main handles in IPC handler modules
-
-### Agent Management (`src/main/agent/`)
-
-The frontend manages agent lifecycle end-to-end:
-- **`agent-queue.ts`** — Queue routing, prioritization, spec number locking
-- **`agent-process.ts`** — Spawns and manages agent subprocess communication
-- **`agent-state.ts`** — Tracks running agent state and status
-- **`agent-events.ts`** — Agent lifecycle events and state transitions
-
-### Claude Profile System (`src/main/claude-profile/`)
-
-Multi-profile credential management for switching between Claude accounts:
-- **`credential-utils.ts`** — OS credential storage (Keychain/Windows Credential Manager)
-- **`token-refresh.ts`** — OAuth token lifecycle and automatic refresh
-- **`usage-monitor.ts`** — API usage tracking and rate limiting per profile
-- **`profile-scorer.ts`** — Scores profiles by usage and availability
-
-### Terminal System (`src/main/terminal/`)
-
-Full PTY-based terminal integration:
-- **`pty-daemon.ts`** / **`pty-manager.ts`** — Background PTY process management
-- **`terminal-lifecycle.ts`** — Session creation, cleanup, event handling
-- **`claude-integration-handler.ts`** — Claude SDK integration within terminals
-- Renderer: xterm.js 6 with WebGL, fit, web-links, serialize addons. Store: `terminal-store.ts`
-
-## Code Quality
-
-### Frontend
-- **Linting:** Biome (`npm run lint` / `npm run lint:fix`)
-- **Type checking:** `npm run typecheck` (strict mode)
-- **Pre-commit:** Husky + lint-staged runs Biome on staged `.ts/.tsx/.js/.jsx/.json`
-- **Testing:** Vitest + React Testing Library + jsdom
-
-### Backend
-- **Linting:** Ruff
-- **Testing:** pytest (`apps/backend/.venv/bin/pytest tests/ -v`)
+- **File naming:** PascalCase for components (`TaskCard.tsx`), camelCase with `use` for hooks (`useTaskStore.ts`), kebab-case for stores (`task-store.ts`)
+- **TypeScript:** Prefer `type` over `interface`, use `export type` for type-only exports, no implicit `any`
+- **Import order:** External libraries → Shared components/utilities → Feature imports → Types (with `import type`)
 
 ## i18n Guidelines
 
-All frontend UI text uses `react-i18next`. Translation files: `apps/frontend/src/shared/i18n/locales/{en,fr}/*.json`
+Translation files: `apps/frontend/src/shared/i18n/locales/{en,fr}/*.json`
 
 **Namespaces:** `common`, `navigation`, `settings`, `dialogs`, `tasks`, `errors`, `onboarding`, `welcome`
 
@@ -284,12 +175,28 @@ const { t } = useTranslation(['navigation', 'common']);
 
 <span>{t('navigation:items.githubPRs')}</span>     // CORRECT
 <span>GitHub PRs</span>                             // WRONG
-
-// With interpolation:
-<span>{t('errors:task.parseError', { error })}</span>
 ```
 
 When adding new UI text: add keys to ALL language files, use `namespace:section.key` format.
+
+## Known Gotchas
+
+**Electron path resolution** — Check path resolution differences between dev and production builds (`app.isPackaged`, `process.resourcesPath`). Paths that work in dev often break when bundled.
+
+**Resetting PR Review State** — To clear all PR review data in `.auto-claude/github/`:
+1. `rm .auto-claude/github/pr/logs_*.json` and `rm .auto-claude/github/pr/review_*.json`
+2. Reset `pr/index.json` to `{"reviews": [], "last_updated": null}`
+3. Reset `bot_detection_state.json` to `{"reviewed_commits": {}}` — the gatekeeper; without clearing it, already-seen commits are skipped
+
+## E2E Testing (Electron MCP)
+
+QA agents can interact with the running Electron app via Chrome DevTools Protocol:
+
+1. Start app: `npm run dev:debug`
+2. Set `ELECTRON_MCP_ENABLED=true` in `apps/backend/.env`
+3. Run QA: `cd apps/backend && python run.py --spec 001 --qa`
+
+Tools: `take_screenshot`, `click_by_text`, `fill_input`, `get_page_structure`, `send_keyboard_shortcut`, `eval`.
 
 ## Cross-Platform
 
@@ -297,36 +204,4 @@ Supports Windows, macOS, Linux. CI tests all three.
 
 **Platform modules:** `apps/frontend/src/main/platform/` and `apps/backend/core/platform/`
 
-| Function | Purpose |
-|----------|---------|
-| `isWindows()` / `isMacOS()` / `isLinux()` | OS detection |
-| `getPathDelimiter()` | `;` (Win) or `:` (Unix) |
-| `findExecutable(name)` | Cross-platform executable lookup |
-| `requiresShell(command)` | `.cmd/.bat` shell detection (Win) |
-
-Use `findExecutable()` and `joinPaths()` instead of hardcoded paths. See [ARCHITECTURE.md](shared_docs/ARCHITECTURE.md#cross-platform-development) for extended guide.
-
-## E2E Testing (Electron MCP)
-
-QA agents can interact with the running Electron app via Chrome DevTools Protocol:
-
-1. Start app: `npm run dev:debug` (debug mode for AI self-validation via Electron MCP)
-2. Set `ELECTRON_MCP_ENABLED=true` in `apps/backend/.env`
-3. Run QA: `python run.py --spec 001 --qa`
-
-Tools: `take_screenshot`, `click_by_text`, `fill_input`, `get_page_structure`, `send_keyboard_shortcut`, `eval`. See [ARCHITECTURE.md](shared_docs/ARCHITECTURE.md#end-to-end-testing) for full capabilities.
-
-## Running the Application
-
-```bash
-# CLI only
-cd apps/backend && python run.py --spec 001
-
-# Desktop app
-npm start          # Production build + run
-npm run dev        # Development mode with HMR
-npm run dev:debug  # Debug mode with verbose output
-npm run dev:mcp    # Electron MCP server for AI debugging
-
-# Project data: .auto-claude/specs/ (gitignored)
-```
+Use `findExecutable()` and `joinPaths()` instead of hardcoded paths. Key functions: `isWindows()`, `isMacOS()`, `isLinux()`, `getPathDelimiter()`, `findExecutable(name)`, `requiresShell(command)`.

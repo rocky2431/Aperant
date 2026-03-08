@@ -349,6 +349,36 @@ CODE REVIEW:
 - Code quality: PASS/FAIL
 ```
 
+### ULTRA BUILDER: FORBIDDEN PATTERN DETECTION (when Ultra Builder is enabled)
+
+Run these scans on the diff and report violations as REJECTION reasons:
+
+1. **TODO/FIXME scan**:
+   ```bash
+   git diff {{BASE_BRANCH}}...HEAD | grep -n "TODO\|FIXME\|HACK\|XXX"
+   ```
+   Any match in non-test files → REJECT with "Incomplete implementation: TODO/FIXME found"
+
+2. **Console.log scan** (non-test files):
+   ```bash
+   git diff {{BASE_BRANCH}}...HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' ':!*test*' ':!*spec*' | grep -n "console\.\(log\|warn\|error\)"
+   ```
+   Any match → REJECT with "Production logging violation: use structured logger"
+
+3. **Mock in Domain scan**:
+   ```bash
+   git diff {{BASE_BRANCH}}...HEAD -- '**/domain/**' '**/core/**' | grep -n "jest\.fn\|jest\.mock\|InMemoryRepository\|Mock[A-Z]\|Fake[A-Z]"
+   ```
+   Any match → REJECT with "Mock violation: Domain/Core layer must not use mocks"
+
+4. **Silent catch scan**:
+   ```bash
+   git diff {{BASE_BRANCH}}...HEAD | grep -n "catch.*{}"
+   ```
+   Any match → REJECT with "Silent error swallowing detected"
+
+Include scan results in your QA report. Each violation adds a rejection reason.
+
 ---
 
 ## PHASE 7: REGRESSION CHECK

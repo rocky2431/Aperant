@@ -290,6 +290,10 @@
       "label": "Mode YOLO",
       "description": "Démarrer Claude avec le flag --dangerously-skip-permissions, contournant toutes les invites de sécurité. À utiliser avec une extrême prudence.",
       "warning": "Ce mode contourne le système de permissions de Claude. N'activez que si vous faites entièrement confiance au code exécuté."
+    },
+    "ultraBuilder": {
+      "title": "Ultra Builder Pro",
+      "description": "Appliquer TDD, contraintes d'architecture, revue de code à 6 agents et vérification des preuves pour le code généré par l'IA"
     }
   },
   "updates": {

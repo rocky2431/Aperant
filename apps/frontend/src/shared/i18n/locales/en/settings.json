@@ -290,6 +290,10 @@
       "label": "YOLO Mode",
       "description": "Start Claude with --dangerously-skip-permissions flag, bypassing all safety prompts. Use with extreme caution.",
       "warning": "This mode bypasses Claude's permission system. Only enable if you fully trust the code being executed."
+    },
+    "ultraBuilder": {
+      "title": "Ultra Builder Pro",
+      "description": "Enforce TDD, architecture constraints, 6-agent code review, and evidence verification for AI-generated code"
     }
   },
   "updates": {

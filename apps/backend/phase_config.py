@@ -71,6 +71,7 @@ DEFAULT_PHASE_MODELS: dict[str, str] = {
     "planning": "sonnet",  # Changed from "opus" (fix #433)
     "coding": "sonnet",
     "qa": "sonnet",
+    "ultra_review": "haiku",
 }
 
 DEFAULT_PHASE_THINKING: dict[str, str] = {
@@ -78,6 +79,7 @@ DEFAULT_PHASE_THINKING: dict[str, str] = {
     "planning": "high",
     "coding": "medium",
     "qa": "high",
+    "ultra_review": "low",
 }
 
 
@@ -86,6 +88,7 @@ class PhaseModelConfig(TypedDict, total=False):
     planning: str
     coding: str
     qa: str
+    ultra_review: str
 
 
 class PhaseThinkingConfig(TypedDict, total=False):
@@ -93,6 +96,7 @@ class PhaseThinkingConfig(TypedDict, total=False):
     planning: str
     coding: str
     qa: str
+    ultra_review: str
 
 
 class TaskMetadataConfig(TypedDict, total=False):
@@ -106,7 +110,7 @@ class TaskMetadataConfig(TypedDict, total=False):
     fastMode: bool
 
 
-Phase = Literal["spec", "planning", "coding", "qa"]
+Phase = Literal["spec", "planning", "coding", "qa", "ultra_review"]
 
 
 def resolve_model_id(model: str) -> str:

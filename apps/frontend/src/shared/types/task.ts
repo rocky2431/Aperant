@@ -241,6 +241,9 @@ export interface TaskMetadata {
   useWorktree?: boolean;  // If false, use direct mode (no worktree isolation) - default is true for safety
   useLocalBranch?: boolean;  // If true, use the local branch directly instead of preferring origin/branch (preserves gitignored files)
 
+  // Ultra Builder Pro enforcement
+  ultraBuilderEnabled?: boolean;  // Enforce TDD, architecture constraints, 6-agent review
+
   // Archive status
   archivedAt?: string;  // ISO date when task was archived
   archivedInVersion?: string;  // Version in which task was archived (from changelog)

@@ -12,6 +12,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from core.ultra_builder import is_ultra_builder_enabled
+
 from .project_context import (
     detect_project_capabilities,
     get_mcp_tools_for_project,
@@ -220,7 +222,10 @@ The project root is the parent of auto-claude/. Implement code in the project ro
 ---
 
 """
-    return spec_context + prompt
+    # Conditionally append Ultra Builder rules
+    ultra_rules = _get_ultra_builder_rules(spec_dir)
+
+    return spec_context + prompt + ultra_rules
 
 
 def get_coding_prompt(spec_dir: Path) -> str:
@@ -279,7 +284,10 @@ After addressing this input, you may delete or clear the HUMAN_INPUT.md file.
 
 """
 
-    return spec_context + prompt
+    # Conditionally append Ultra Builder rules
+    ultra_rules = _get_ultra_builder_rules(spec_dir)
+
+    return spec_context + prompt + ultra_rules
 
 
 def _get_recovery_context(spec_dir: Path) -> str:
@@ -452,6 +460,27 @@ def _load_prompt_file(filename: str) -> str:
     if not prompt_file.exists():
         raise FileNotFoundError(f"Prompt file not found: {prompt_file}")
     return prompt_file.read_text(encoding="utf-8")
+
+
+def _get_ultra_builder_rules(spec_dir: Path) -> str:
+    """
+    Conditionally load Ultra Builder Pro rules for injection into agent prompts.
+
+    Only loads when ultraBuilderEnabled is set in task_metadata.json.
+
+    Args:
+        spec_dir: Directory containing spec files and task_metadata.json
+
+    Returns:
+        Ultra Builder rules content, or empty string if disabled
+    """
+    if not is_ultra_builder_enabled(spec_dir):
+        return ""
+    try:
+        rules = _load_prompt_file("ultra_builder_rules.md")
+        return f"\n\n---\n\n{rules}\n"
+    except FileNotFoundError:
+        return ""
 
 
 def get_qa_reviewer_prompt(spec_dir: Path, project_dir: Path) -> str:
@@ -632,7 +661,10 @@ This shows only changes made in the spec branch since it diverged from `{base_br
         base_prompt += "\n\n---\n\n## PROJECT-SPECIFIC VALIDATION TOOLS\n\n"
         base_prompt += "\n\n---\n\n".join(mcp_sections)
 
-    return spec_context + base_prompt
+    # Conditionally append Ultra Builder rules
+    ultra_rules = _get_ultra_builder_rules(spec_dir)
+
+    return spec_context + base_prompt + ultra_rules
 
 
 def get_qa_fixer_prompt(spec_dir: Path, project_dir: Path) -> str:

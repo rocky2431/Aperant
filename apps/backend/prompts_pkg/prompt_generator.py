@@ -16,6 +16,8 @@ import json
 import re
 from pathlib import Path
 
+from core.ultra_builder import is_ultra_builder_enabled
+
 # Worktree path patterns for detection
 # Matches paths like: .auto-claude/worktrees/tasks/{spec-name}/
 WORKTREE_PATH_PATTERNS = [
@@ -159,11 +161,15 @@ def generate_environment_context(project_dir: Path, spec_dir: Path) -> str:
             generate_worktree_isolation_warning(project_dir, parent_project_path)
         )
 
+    # Detect Ultra Builder mode
+    ultra_builder_active = is_ultra_builder_enabled(spec_dir)
+
     sections.append(f"""## YOUR ENVIRONMENT
 
 **Working Directory:** `{project_dir}`
 **Spec Location:** `{relative_spec}/`
 {"**Isolation Mode:** WORKTREE (changes are isolated from main project)" if is_worktree else ""}
+{"**Quality Mode:** ULTRA BUILDER PRO — TDD, architecture constraints, and evidence verification enforced" if ultra_builder_active else ""}
 
 Your filesystem is restricted to your working directory. All file paths should be
 relative to this location. Do NOT use absolute paths.
@@ -313,6 +319,36 @@ Verify:""")
         instructions = verification.get("instructions", "Manual verification required")
         sections.append(f"**Manual Verification:**\n{instructions}\n")
 
+    # Ultra Builder: TDD workflow injection
+    test_first = subtask.get("test_first", False)
+    architecture_layer = subtask.get("architecture_layer", "")
+    ultra_builder_active = is_ultra_builder_enabled(spec_dir)
+
+    if ultra_builder_active and test_first:
+        sections.append("""## ULTRA BUILDER: TDD WORKFLOW (test_first: true)
+
+**You MUST follow RED → GREEN → REFACTOR:**
+
+1. **RED**: Write a failing test that defines the expected behavior for this subtask
+2. **GREEN**: Write the minimum code to make the test pass
+3. **REFACTOR**: Clean up while keeping tests green
+
+Do NOT write implementation code before writing the test.
+""")
+
+        if architecture_layer == "core":
+            sections.append("""### Functional Core Rules (architecture_layer: core)
+- **No mocks**: Direct instantiation only (pure input → output)
+- FORBIDDEN: `jest.fn()`, `jest.mock()`, `InMemoryRepository`, `FakeXxx`
+- Test by passing input and asserting output — no side effects
+""")
+        elif architecture_layer == "shell":
+            sections.append("""### Imperative Shell Rules (architecture_layer: shell)
+- Use Testcontainers for real DB/service dependencies
+- Integration tests with actual infrastructure
+- FORBIDDEN: `InMemoryRepository`, `MockXxx` for infrastructure
+""")
+
     # Instructions
     sections.append(f"""## Instructions
 
@@ -335,6 +371,9 @@ Before marking complete, verify:
 - [ ] Error handling in place
 - [ ] Verification passes
 - [ ] Clean commit with descriptive message
+{f"- [ ] Tests written BEFORE implementation (TDD)" if ultra_builder_active and test_first else ""}
+{f"- [ ] No TODO/FIXME/HACK comments" if ultra_builder_active else ""}
+{f"- [ ] No mock on Domain/Repository layers" if ultra_builder_active and architecture_layer == "core" else ""}
 
 ## Important
 

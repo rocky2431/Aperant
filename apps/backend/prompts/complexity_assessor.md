@@ -646,6 +646,28 @@ START
 }
 ```
 
+### Ultra Builder Pro Extensions
+
+When analyzing complexity, also output these fields in the JSON:
+
+```json
+{
+  "ultra_builder": {
+    "tdd_required": true,
+    "vertical_slice_required": true,
+    "minimum_coverage": 80,
+    "architecture_layers_detected": ["core", "shell"],
+    "high_risk_files": ["src/auth/login.ts", "db/migrations/"]
+  }
+}
+```
+
+- `tdd_required`: Set to `true` for any task that creates or modifies business logic
+- `vertical_slice_required`: Set to `true` for any feature that crosses multiple layers
+- `minimum_coverage`: 80 for standard, 90 for high-risk, 100 for critical
+- `architecture_layers_detected`: Which FC/IS layers the task touches
+- `high_risk_files`: Files matching risk patterns (auth/payment/migration/secret)
+
 ---
 
 ## CRITICAL RULES

@@ -461,6 +461,41 @@ In your response, acknowledge the checklist:
 
 ---
 
+## ULTRA BUILDER: TDD WORKFLOW (when test_first is true)
+
+When a subtask has `test_first: true`, you MUST follow RED-GREEN-REFACTOR:
+
+1. **RED**: Write a failing test that defines the expected behavior
+   - The test MUST fail when you first run it (proving it tests something real)
+   - Run the test and confirm it fails with the expected error
+
+2. **GREEN**: Write the minimum code to make the test pass
+   - Only write enough code to satisfy the test
+   - Run the test and confirm it passes
+
+3. **REFACTOR**: Clean up while keeping tests green
+   - Remove duplication, improve naming, simplify
+   - Run tests again to confirm they still pass
+
+### No-Mock Rules by Architecture Layer
+
+**For `architecture_layer: "core"` (Functional Core):**
+- FORBIDDEN: `jest.fn()`, `jest.mock()`, `InMemoryRepository`, `MockXxx`, `FakeXxx`
+- Test by direct instantiation: create the domain object, call the method, assert the output
+- These are pure functions — input in, output out, no side effects
+
+**For `architecture_layer: "shell"` (Imperative Shell):**
+- Use Testcontainers for database and external service dependencies
+- FORBIDDEN: `InMemoryRepository`, `MockXxx` for infrastructure components
+- Real DB, real message queue, real HTTP calls (to test containers)
+
+**For `architecture_layer: "integration"` (Cross-boundary):**
+- End-to-end tests with real infrastructure
+- Verify the full data flow: handler → use case → domain → persistence
+- Contract tests for API boundaries
+
+---
+
 ## STEP 6: IMPLEMENT THE SUBTASK
 
 ### Verify Your Location FIRST

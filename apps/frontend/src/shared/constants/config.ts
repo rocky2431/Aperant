@@ -68,6 +68,8 @@ export const DEFAULT_APP_SETTINGS = {
   sentryEnabled: true,
   // Auto-name Claude terminals based on initial message (enabled by default)
   autoNameClaudeTerminals: true,
+  // Ultra Builder Pro: enforce TDD, architecture constraints, 6-agent review, and evidence verification
+  ultraBuilderEnabled: false,
   // GPU acceleration for terminal rendering
   // Default to 'off' until WebGL stability is proven across all GPU drivers.
   // Users can opt-in via Settings > Display > GPU Acceleration.

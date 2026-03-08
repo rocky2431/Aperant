@@ -7,8 +7,11 @@ Validators for git operations:
 - Config protection (prevent setting test users)
 """
 
+import logging
 import shlex
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from .validation_models import ValidationResult
 
@@ -203,7 +206,35 @@ def validate_git_command(command_string: str) -> ValidationResult:
 
     # Check git commit commands (secret scanning)
     if subcommand == "commit":
-        return validate_git_commit_secrets(command_string)
+        is_valid, error_msg = validate_git_commit_secrets(command_string)
+        if not is_valid:
+            return is_valid, error_msg
+
+        # Ultra Builder: Additional code quality checks on commit
+        try:
+            from core.ultra_builder import is_ultra_builder_enabled
+            # Check environment for spec_dir
+            import os
+            spec_dir_env = os.environ.get("SPEC_DIR")
+            if spec_dir_env and is_ultra_builder_enabled(Path(spec_dir_env)):
+                from .code_quality_validators import (
+                    validate_no_todos_in_commit,
+                    validate_no_console_log_in_commit,
+                    validate_no_mocks_in_domain,
+                )
+                project_dir = Path.cwd()
+                for validator in [
+                    validate_no_todos_in_commit,
+                    validate_no_console_log_in_commit,
+                    validate_no_mocks_in_domain,
+                ]:
+                    is_valid, msg = validator(tokens, project_dir)
+                    if not is_valid:
+                        return False, msg
+        except ImportError as exc:
+            logger.warning("Ultra Builder code quality validators unavailable: %s", exc)
+
+        return True, ""
 
     return True, ""
 

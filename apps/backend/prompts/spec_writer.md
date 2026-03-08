@@ -235,6 +235,47 @@ The task is complete when:
 - [ ] Code follows established patterns
 - [ ] No security vulnerabilities introduced
 
+### TEST STRATEGY (Ultra Builder Pro)
+
+When Ultra Builder Pro is enabled, the spec MUST include a **Test Strategy** section with:
+
+1. **Test Types Required**:
+   - Unit tests (Functional Core: pure input → output)
+   - Integration tests (Imperative Shell: Testcontainers with real DB)
+   - E2E tests (full vertical slice validation)
+
+2. **Coverage Targets**:
+   - Overall: 80% minimum
+   - Functional Core (domain logic): 100%
+   - Critical paths in Shell layer: explicitly listed
+
+3. **Vertical Slice Verification**:
+   For each feature, define the data flow path:
+   - Entry Point → Use Case → Domain → Persistence
+   - Each path requires at least one integration test
+
+4. **Mock Strategy**:
+   - Domain/Core: NO mocks — direct instantiation only
+   - Shell/Infrastructure: Testcontainers (real DB/services)
+   - External APIs: Test Doubles with documented rationale
+
+Example Test Strategy section in spec:
+
+```
+## Test Strategy
+
+### Unit Tests (Functional Core)
+- `UserEntity.create()`: Validates email format, generates UUID
+- `OrderService.calculateTotal()`: Applies discounts, tax rules
+
+### Integration Tests (Imperative Shell)
+- `UserRepository.save()`: Testcontainers PostgreSQL
+- `OrderAPI.POST /orders`: Full request/response cycle
+
+### E2E Verification
+- Create user → Place order → Verify in DB: complete data flow
+```
+
 SPEC_EOF
 ```
 

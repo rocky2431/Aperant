@@ -452,6 +452,8 @@ async def save_session_memory(
                 file_path=str(memory_dir / f"session_{session_num:03d}.json"),
                 subtasks_saved=len(subtasks_completed),
             )
+        _save_to_fts5(spec_dir, insights)
+
         return True, "file"
     except Exception as e:
         logger.error(f"File-based memory save also failed: {e}")
@@ -468,7 +470,28 @@ async def save_session_memory(
             spec_dir=str(spec_dir),
             project_dir=str(project_dir),
         )
+
+        _save_to_fts5(spec_dir, insights)
+
         return False, "none"
+
+
+def _save_to_fts5(spec_dir: Path, insights: dict) -> None:
+    """Save insights to FTS5 memory (always-on, zero-cost layer)."""
+    try:
+        from memory.fts_memory import FTSMemory
+        fts = FTSMemory(spec_dir)
+        try:
+            for pattern in insights.get("discoveries", {}).get("patterns_found", []):
+                fts.save_pattern(str(pattern))
+            for gotcha in insights.get("discoveries", {}).get("gotchas_encountered", []):
+                fts.save_gotcha(str(gotcha))
+            if is_debug_enabled():
+                debug("memory", "FTS5 memory saved (always-on layer)")
+        finally:
+            fts.close()
+    except Exception as fts_exc:
+        logger.warning("FTS5 memory save failed (non-critical): %s", fts_exc)
 
 
 # Keep the old function name as an alias for backwards compatibility
