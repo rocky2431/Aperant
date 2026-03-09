@@ -32,6 +32,12 @@ _DEFAULT_OVERRIDES: dict[str, Any] = {
     "six_agent_review": True,
     "risk_brake": True,
     "code_quality_validators": True,
+    "multi_ai_dispatch": True,
+    "init_quality_gate": True,
+    "research_cross_validation": True,
+    "plan_adversarial_review": True,
+    "dev_subtask_review": True,
+    "deliver_checkpoint": True,
 }
 
 

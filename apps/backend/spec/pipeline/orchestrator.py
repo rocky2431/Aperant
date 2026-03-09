@@ -6,9 +6,12 @@ Main orchestration logic for spec creation with dynamic complexity adaptation.
 """
 
 import json
+import logging
 import types
 from collections.abc import Callable
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from analysis.analyzers import analyze_project
 from core.task_event import TaskEventEmitter
@@ -434,6 +437,26 @@ class SpecOrchestrator:
             # Store summary for subsequent phases (compaction)
             if result.success:
                 await self._store_phase_summary(phase_name)
+
+            # Ultra Builder: INIT quality gate after spec_writing and planning
+            if result.success and phase_name in ("spec_writing", "planning"):
+                try:
+                    from core.ultra_builder import is_rule_enabled
+                    if is_rule_enabled(self.spec_dir, self.project_dir, "init_quality_gate"):
+                        from spec.ultra_quality_gate import run_init_quality_gate, write_gate_feedback
+                        output_files = [Path(f) for f in result.output_files]
+                        gate = await run_init_quality_gate(
+                            self.spec_dir, self.project_dir, phase_name, output_files
+                        )
+                        if not gate.passed:
+                            write_gate_feedback(self.spec_dir, gate)
+                            print_status(
+                                f"Ultra Builder: Quality gate failed for {phase_name} "
+                                f"({len(gate.findings)} findings)",
+                                "warning",
+                            )
+                except Exception as exc:
+                    logger.warning("INIT quality gate error (non-blocking): %s", exc)
 
             if not result.success:
                 print()

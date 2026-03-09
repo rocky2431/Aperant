@@ -174,6 +174,32 @@ async def post_session_processing(
             recovery_manager.record_good_commit(commit_after, subtask_id)
             print_status(f"Recorded good commit: {commit_after[:8]}", "success")
 
+        # Ultra Builder: DEV subtask review
+        try:
+            from core.ultra_builder import is_rule_enabled
+            if is_rule_enabled(spec_dir, project_dir, "dev_subtask_review"):
+                from .ultra_dev_review import run_dev_subtask_review
+                dev_review = await run_dev_subtask_review(
+                    project_dir, spec_dir, subtask_id, commit_before, commit_after
+                )
+                if dev_review.has_blockers:
+                    print_status(
+                        f"Ultra Builder: DEV review found {len(dev_review.findings)} blocker(s)",
+                        "warning",
+                    )
+                    try:
+                        from memory.learned_patterns import LearnedPatternTracker
+                        tracker = LearnedPatternTracker(spec_dir)
+                        try:
+                            for finding in dev_review.findings[:5]:
+                                tracker.record_pattern(f"DEV: {finding.get('title', 'Unknown')}")
+                        finally:
+                            tracker.close()
+                    except Exception as pattern_exc:
+                        logger.warning("Failed to save DEV review patterns: %s", pattern_exc)
+        except Exception as exc:
+            logger.warning("DEV subtask review error (non-blocking): %s", exc)
+
         # Record Linear session result (if enabled)
         if linear_enabled:
             # Get progress counts for the comment

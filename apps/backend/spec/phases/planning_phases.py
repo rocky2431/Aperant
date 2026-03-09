@@ -5,6 +5,7 @@ Planning and Validation Phase Implementations
 Phases for implementation planning and final validation.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from task_logger import LogEntryType, LogPhase
@@ -31,6 +32,7 @@ class PlanningPhaseMixin:
                 self.ui.print_status(
                     "implementation_plan.json already exists and is valid", "success"
                 )
+                await self._run_plan_adversarial_review(plan_file)
                 return PhaseResult("planning", True, [str(plan_file)], [], 0)
             self.ui.print_status("Plan exists but invalid, regenerating...", "warning")
 
@@ -55,6 +57,7 @@ class PlanningPhaseMixin:
                         LogEntryType.SUCCESS,
                         LogPhase.PLANNING,
                     )
+                await self._run_plan_adversarial_review(plan_file)
                 return PhaseResult("planning", True, [str(plan_file)], [], 0)
             else:
                 if auto_fix_plan(self.spec_dir):
@@ -63,6 +66,7 @@ class PlanningPhaseMixin:
                         self.ui.print_status(
                             "Auto-fixed implementation_plan.json", "success"
                         )
+                        await self._run_plan_adversarial_review(plan_file)
                         return PhaseResult("planning", True, [str(plan_file)], [], 0)
                 errors.append(f"Script output invalid: {result.errors}")
 
@@ -84,6 +88,7 @@ class PlanningPhaseMixin:
                     self.ui.print_status(
                         "Created valid implementation_plan.json via agent", "success"
                     )
+                    await self._run_plan_adversarial_review(plan_file)
                     return PhaseResult("planning", True, [str(plan_file)], [], attempt)
                 else:
                     if auto_fix_plan(self.spec_dir):
@@ -92,6 +97,7 @@ class PlanningPhaseMixin:
                             self.ui.print_status(
                                 "Auto-fixed implementation_plan.json", "success"
                             )
+                            await self._run_plan_adversarial_review(plan_file)
                             return PhaseResult(
                                 "planning", True, [str(plan_file)], [], attempt
                             )
@@ -101,6 +107,41 @@ class PlanningPhaseMixin:
                 errors.append(f"Agent attempt {attempt + 1}: Did not create plan file")
 
         return PhaseResult("planning", False, [], errors, MAX_RETRIES)
+
+    async def _run_plan_adversarial_review(self, plan_file: Path) -> None:
+        """Run adversarial plan review if Ultra Builder is enabled."""
+        try:
+            from core.ultra_builder import is_rule_enabled
+            if not is_rule_enabled(self.spec_dir, self.project_dir, "plan_adversarial_review"):
+                return
+
+            import json as _json
+            with open(plan_file, encoding="utf-8") as fh:
+                plan_data = _json.load(fh)
+
+            spec_file = self.spec_dir / "spec.md"
+            spec_content = spec_file.read_text(encoding="utf-8") if spec_file.exists() else ""
+
+            from spec.ultra_plan_reviewer import run_adversarial_plan_review
+            review = await run_adversarial_plan_review(
+                self.spec_dir, self.project_dir, plan_data, spec_content
+            )
+
+            if review.revised_plan:
+                from core.file_utils import write_json_atomic
+                write_json_atomic(plan_file, review.revised_plan, indent=2)
+                self.ui.print_status("Ultra Builder: Plan revised after adversarial review", "info")
+
+            if not review.approved:
+                self.ui.print_status(
+                    f"Ultra Builder: Plan has {len(review.unresolved)} unresolved challenges",
+                    "warning",
+                )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Plan adversarial review error (non-blocking): %s", exc
+            )
 
     async def phase_validation(self) -> PhaseResult:
         """Final validation of all spec files with auto-fix retry."""

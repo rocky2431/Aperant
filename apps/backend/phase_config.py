@@ -72,6 +72,12 @@ DEFAULT_PHASE_MODELS: dict[str, str] = {
     "coding": "sonnet",
     "qa": "sonnet",
     "ultra_review": "haiku",
+    "ultra_init_gate": "haiku",
+    "ultra_research_validate": "haiku",
+    "ultra_plan_review": "sonnet",
+    "ultra_dev_review": "haiku",
+    "ultra_cross_verify": "haiku",
+    "ultra_delivery": "sonnet",
 }
 
 DEFAULT_PHASE_THINKING: dict[str, str] = {
@@ -80,6 +86,12 @@ DEFAULT_PHASE_THINKING: dict[str, str] = {
     "coding": "medium",
     "qa": "high",
     "ultra_review": "low",
+    "ultra_init_gate": "low",
+    "ultra_research_validate": "low",
+    "ultra_plan_review": "medium",
+    "ultra_dev_review": "low",
+    "ultra_cross_verify": "low",
+    "ultra_delivery": "medium",
 }
 
 
@@ -89,6 +101,12 @@ class PhaseModelConfig(TypedDict, total=False):
     coding: str
     qa: str
     ultra_review: str
+    ultra_init_gate: str
+    ultra_research_validate: str
+    ultra_plan_review: str
+    ultra_dev_review: str
+    ultra_cross_verify: str
+    ultra_delivery: str
 
 
 class PhaseThinkingConfig(TypedDict, total=False):
@@ -97,6 +115,12 @@ class PhaseThinkingConfig(TypedDict, total=False):
     coding: str
     qa: str
     ultra_review: str
+    ultra_init_gate: str
+    ultra_research_validate: str
+    ultra_plan_review: str
+    ultra_dev_review: str
+    ultra_cross_verify: str
+    ultra_delivery: str
 
 
 class TaskMetadataConfig(TypedDict, total=False):
@@ -110,7 +134,11 @@ class TaskMetadataConfig(TypedDict, total=False):
     fastMode: bool
 
 
-Phase = Literal["spec", "planning", "coding", "qa", "ultra_review"]
+Phase = Literal[
+    "spec", "planning", "coding", "qa", "ultra_review",
+    "ultra_init_gate", "ultra_research_validate", "ultra_plan_review",
+    "ultra_dev_review", "ultra_cross_verify", "ultra_delivery",
+]
 
 
 def resolve_model_id(model: str) -> str:

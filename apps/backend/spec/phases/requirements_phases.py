@@ -226,6 +226,30 @@ Output your findings to research.json.
 
             if success and research_file.exists():
                 self.ui.print_status("Created research.json", "success")
+
+                # Ultra Builder: Cross-validate research findings
+                try:
+                    from core.ultra_builder import is_rule_enabled
+                    if is_rule_enabled(self.spec_dir, self.project_dir, "research_cross_validation"):
+                        from spec.ultra_research_validator import cross_validate_research, annotate_research
+                        with open(research_file, encoding="utf-8") as rf:
+                            research_data = json.load(rf)
+                        validation = await cross_validate_research(
+                            self.spec_dir, self.project_dir, research_data
+                        )
+                        annotate_research(research_file, validation)
+                        if validation.contradictions:
+                            self.ui.print_status(
+                                f"Ultra Builder: {len(validation.contradictions)} research "
+                                f"contradiction(s) found (confidence={validation.confidence_score:.0%})",
+                                "warning",
+                            )
+                except Exception as exc:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "Research cross-validation error (non-blocking): %s", exc
+                    )
+
                 return PhaseResult("research", True, [str(research_file)], [], attempt)
 
             if success and not research_file.exists():

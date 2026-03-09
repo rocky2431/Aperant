@@ -55,7 +55,7 @@ from .report import (
 )
 from .reviewer import run_qa_agent_session
 
-from core.ultra_builder import is_ultra_builder_enabled
+from core.ultra_builder import is_ultra_builder_enabled, is_rule_enabled
 
 # Configuration
 MAX_QA_ITERATIONS = 50
@@ -293,25 +293,56 @@ async def run_qa_validation_loop(
 
         # Ultra Builder: Run 6-agent parallel review
         # Runs on first iteration and on any iteration following a verdict-gate rejection
-        ultra_recheck_needed = (
-            is_ultra_builder_enabled(spec_dir)
-            and (spec_dir / "QA_FIX_REQUEST.md").exists()
-            and "REVIEW VERDICT GATE" in (spec_dir / "QA_FIX_REQUEST.md").read_text(
-                encoding="utf-8"
-            )
-        ) if is_ultra_builder_enabled(spec_dir) and qa_iteration > 1 else False
+        ultra_recheck_needed = False
+        if qa_iteration > 1 and is_ultra_builder_enabled(spec_dir):
+            try:
+                fix_request = spec_dir / "QA_FIX_REQUEST.md"
+                if fix_request.exists():
+                    ultra_recheck_needed = "REVIEW VERDICT GATE" in fix_request.read_text(
+                        encoding="utf-8"
+                    )
+            except OSError as exc:
+                logger.warning("Failed to read QA_FIX_REQUEST.md: %s", exc)
         if (qa_iteration == 1 or ultra_recheck_needed) and is_ultra_builder_enabled(spec_dir):
             try:
                 from .ultra_review import run_ultra_review, write_ultra_review_context
                 ultra_findings = await run_ultra_review(project_dir, spec_dir)
                 if ultra_findings.findings:
-                    write_ultra_review_context(spec_dir, ultra_findings)
                     debug(
                         "qa_loop",
                         "Ultra Review complete",
                         findings=len(ultra_findings.findings),
                         critical=ultra_findings.has_critical,
                     )
+
+                    # Ultra Builder: Cross-verify with external AIs
+                    if is_rule_enabled(spec_dir, project_dir, "multi_ai_dispatch"):
+                        try:
+                            from .ultra_cross_verify import (
+                                merge_cross_verify_findings,
+                                run_cross_verification,
+                            )
+                            from .ultra_delivery_checkpoint import get_build_diff
+                            diff_context = get_build_diff(project_dir, spec_dir)
+                            cross_result = await run_cross_verification(
+                                project_dir, spec_dir, diff_context,
+                                ultra_findings.to_dict().get("findings", []),
+                            )
+                            if cross_result.corroborated or cross_result.new_findings:
+                                findings_dicts = ultra_findings.to_dict().get("findings", [])
+                                merge_cross_verify_findings(findings_dicts, cross_result)
+                                debug(
+                                    "qa_loop",
+                                    "Cross-verification complete",
+                                    corroborated=len(cross_result.corroborated),
+                                    new=len(cross_result.new_findings),
+                                )
+                        except Exception as cross_exc:
+                            logger.warning("Cross-verification failed (non-blocking): %s", cross_exc)
+
+                    # Write context AFTER cross-verify so merged findings are persisted
+                    write_ultra_review_context(spec_dir, ultra_findings)
+
             except Exception as exc:
                 logger.warning("Ultra Review failed (non-blocking): %s", exc)
                 debug_warning("qa_loop", f"Ultra Review failed (non-blocking): {exc}")
@@ -452,6 +483,36 @@ async def run_qa_validation_loop(
                             exc,
                         )
 
+            # Ultra Builder: Delivery checkpoint
+            if is_ultra_builder_enabled(spec_dir):
+                try:
+                    if is_rule_enabled(spec_dir, project_dir, "deliver_checkpoint"):
+                        from .ultra_delivery_checkpoint import (
+                            format_delivery_blockers,
+                            run_delivery_checkpoint,
+                        )
+                        delivery = await run_delivery_checkpoint(project_dir, spec_dir)
+                        if not delivery.ready_to_ship:
+                            debug_warning(
+                                "qa_loop",
+                                "Ultra Builder delivery checkpoint: not ready to ship",
+                                blockers=delivery.blockers,
+                            )
+                            print(f"\n⚠️  Ultra Builder: Delivery checkpoint failed ({len(delivery.blockers)} blocker(s))")
+                            fix_request = spec_dir / "QA_FIX_REQUEST.md"
+                            fix_request.write_text(
+                                format_delivery_blockers(delivery), encoding="utf-8"
+                            )
+                            status = "rejected"
+                            record_iteration(
+                                spec_dir, qa_iteration, "rejected",
+                                [{"title": "Delivery checkpoint failed", "description": format_delivery_blockers(delivery)[:500]}],
+                                iteration_duration,
+                            )
+                            continue
+                except Exception as exc:
+                    logger.warning("Delivery checkpoint error (non-blocking): %s", exc)
+
             # Record successful iteration (only reached if evidence gate passes)
             debug_success(
                 "qa_loop",
@@ -541,11 +602,13 @@ async def run_qa_validation_loop(
                     from memory.learned_patterns import LearnedPatternTracker
 
                     tracker = LearnedPatternTracker(spec_dir)
-                    for issue in current_issues[:5]:
-                        title = issue.get("title", "")
-                        if title:
-                            tracker.record_pattern(f"QA: {title}")
-                    tracker.close()
+                    try:
+                        for issue in current_issues[:5]:
+                            title = issue.get("title", "")
+                            if title:
+                                tracker.record_pattern(f"QA: {title}")
+                    finally:
+                        tracker.close()
                 except Exception as exc:
                     logger.warning("Failed to save QA patterns: %s", exc)
 
